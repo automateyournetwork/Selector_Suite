@@ -1,0 +1,32 @@
+services:
+  packet_copilot:
+    image: johncapobianco/packet_copilot:packet_copilot
+    container_name: packet_copilot
+    restart: always
+    build: 
+      context: ./
+      dockerfile: ./docker/Dockerfile.packet
+    ports:
+      - "8501:8501"  # 👈 use `expose` instead of `ports` to keep it internal
+
+  configurationvision:
+    image: johncapobianco/topology_vision:topology_vision
+    container_name: topology_vision
+    restart: always
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.vision
+    ports:
+      - "8502:8502"  # 👈 use `expose` for internal access only
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx_gateway
+    restart: always
+    ports:
+      - "80:80"  # 👈 external port to ALB (HTTP only — SSL is on ALB)
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - packet_copilot
+      - configurationvision
