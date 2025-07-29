@@ -190,24 +190,23 @@ prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inte
 if st.button("🚀 Submit to Gemini"):
     if uploaded_file and prompt and MODEL:
         try:
-            image = Image.open(uploaded_file)
-
-            # 🧠 Store image and prompt in session
-            st.session_state["image_cache"] = image
+            # 🧠 Store prompt text (images can't be pickled)
             st.session_state["prompt_cache"] = prompt
 
             st.info("⚙️ Processing your diagram and generating the configuration...")
 
+            image = Image.open(uploaded_file)
+
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
                 st.session_state["final_config"] = final_config
-                st.session_state["final_config_ready"] = True  # ✅ Trigger UI rendering
+                st.session_state["final_config_ready"] = True
+                st.session_state["final_explanation"] = None  # Reset any old explanation
 
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
             logging.error(f"Configuration generation failed: {e}")
             st.session_state["final_config_ready"] = False
-
     else:
         if not uploaded_file:
             st.warning("⚠️ Please upload a diagram.")
@@ -221,12 +220,12 @@ if st.button("🚀 Submit to Gemini"):
 if st.session_state.get("final_config_ready"):
     st.subheader("🧩 Final Configuration")
 
-    if "image_cache" in st.session_state:
-        st.image(st.session_state["image_cache"], caption="Uploaded Network Diagram")
+    if uploaded_file:
+        st.image(uploaded_file, caption="Uploaded Network Diagram")
 
     st.code(st.session_state["final_config"], language="bash")
 
-    # 🧠 Explanation button triggers markdown generation + persistence
+    # 🧠 Explanation button triggers markdown generation
     if st.button("🧠 Explain This Configuration"):
         with st.spinner("Explaining the final configuration..."):
             try:
@@ -245,7 +244,7 @@ if st.session_state.get("final_config_ready"):
                 st.session_state["final_explanation"] = None
 
     # 📘 Show explanation if available
-    if "final_explanation" in st.session_state:
+    if st.session_state.get("final_explanation"):
         st.markdown(st.session_state["final_explanation"])
 
     # 📥 Download
