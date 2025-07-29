@@ -1,6 +1,5 @@
 import os
 import logging
-import traceback
 from PIL import Image
 from io import BytesIO
 import streamlit as st
@@ -40,13 +39,6 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     """
     Analyzes the network diagram and prompt in a single pass to generate a final configuration.
     """
-    if not MODEL:
-        raise ConnectionError("Gemini model is not initialized. Check API key.")
-
-    # Log image details
-    logging.info(f"Image format: {image.format}, mode: {image.mode}, size: {image.size}")
-    st.write(f"Image format: {image.format}, mode: {image.mode}, size: {image.size}")
-
     # This single, detailed prompt combines the best of your previous prompts.
     final_prompt = f"""
     You are an expert network automation engineer. Your task is to generate a production-ready, Cisco-style CLI configuration based on an uploaded network diagram and a textual goal.
@@ -118,21 +110,12 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     - Use consistent indentation.
     - Do **not** include any explanations, commentary, markdown formatting (like ```), or conversational text in your output.
     """
-    logging.info("Calling Gemini with multimodal input...")
-    st.write("Calling Gemini now...")
 
     response = MODEL.generate_content(
         [image, final_prompt],
         generation_config={"temperature": 0.4}
     )
-
-    st.write("✅ Gemini returned a response.")
-    st.write(response)  # Show entire response object
-    if hasattr(response, "text") and response.text:
-        return response.text.strip()
-    else:
-        raise ValueError("No text returned in Gemini response")
-    
+    st.write(response)
     return response.text.strip()
 
 
@@ -193,13 +176,21 @@ st.markdown("### 📤 Upload Your Own Network Diagram")
 uploaded_file = st.file_uploader("Upload network diagram (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
 prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.")
 
-if st.button("Submit"):
-    if uploaded_file and prompt and MODEL:
-        try:
-            image = Image.open(uploaded_file)
+# Store uploaded file bytes in session state for persistence across reruns
+if uploaded_file is not None:
+    file_bytes = uploaded_file.read()
+    st.session_state["uploaded_file_bytes"] = file_bytes
+else:
+    file_bytes = st.session_state.get("uploaded_file_bytes", None)
 
-            # Store image in session state for redisplay after rerun
-            st.session_state["image_cache"] = image
+if st.button("Submit"):
+    if file_bytes and prompt and MODEL:
+        try:
+            # Reconstruct the image from bytes
+            image = Image.open(BytesIO(file_bytes))
+
+            # Store image in session state for redisplay after rerun (store bytes, not PIL image)
+            st.session_state["image_cache_bytes"] = file_bytes
 
             st.info("⚙️ Processing your diagram and generating the configuration...")
 
@@ -215,19 +206,19 @@ if st.button("Submit"):
             logging.error(f"Configuration generation failed: {e}")
 
     else:
-        if not uploaded_file:
+        if not file_bytes:
             st.warning("⚠️ Please upload a diagram.")
         if not prompt:
             st.warning("⚠️ Please provide a configuration goal.")
         if not MODEL:
              st.error("🚨 Model not available. Please check your API key configuration.")
 
-
 # --- Post-generation UI (Explain & Download) ---
 if "final_config" in st.session_state:
     st.subheader("🧩 Final Configuration")
-    if "image_cache" in st.session_state:
-        st.image(st.session_state["image_cache"], caption="Uploaded Network Diagram")
+    # Reconstruct image from bytes for display
+    if "image_cache_bytes" in st.session_state:
+        st.image(Image.open(BytesIO(st.session_state["image_cache_bytes"])), caption="Uploaded Network Diagram")
     st.code(st.session_state["final_config"], language="bash")
 
     # Explanation button
