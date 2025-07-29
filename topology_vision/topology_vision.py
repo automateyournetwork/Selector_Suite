@@ -191,17 +191,17 @@ if st.button("Submit"):
         try:
             image = Image.open(uploaded_file)
 
-            # Store image in session state for redisplay after rerun
+            # 🧠 Store image and prompt before rerun
             st.session_state["image_cache"] = image
+            st.session_state["prompt_cache"] = prompt  # optional
 
             st.info("⚙️ Processing your diagram and generating the configuration...")
 
-            # --- Simplified Logic: Single spinner and function call ---
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
-                st.session_state["final_config"] = final_config
 
-            st.success("✅ Configuration generation complete!")
+            # ✅ Store result last (to trigger rerun after everything else is ready)
+            st.session_state["final_config"] = final_config
 
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
@@ -213,17 +213,18 @@ if st.button("Submit"):
         if not prompt:
             st.warning("⚠️ Please provide a configuration goal.")
         if not MODEL:
-             st.error("🚨 Model not available. Please check your API key configuration.")
-
+            st.error("🚨 Model not available. Please check your API key configuration.")
 
 # --- Post-generation UI (Explain & Download) ---
+# --- Post-generation UI ---
 if "final_config" in st.session_state:
     st.subheader("🧩 Final Configuration")
+
     if "image_cache" in st.session_state:
         st.image(st.session_state["image_cache"], caption="Uploaded Network Diagram")
+
     st.code(st.session_state["final_config"], language="bash")
 
-    # Explanation button
     if st.button("🧠 Explain This Configuration"):
         with st.spinner("Explaining the final configuration..."):
             try:
@@ -241,7 +242,6 @@ if "final_config" in st.session_state:
             except Exception as e:
                 st.error(f"An error occurred while generating the explanation: {e}")
 
-    # Download button
     st.download_button(
         label="📥 Download Final Configuration",
         data=st.session_state["final_config"],
