@@ -5,6 +5,12 @@ from io import BytesIO
 import streamlit as st
 from dotenv import load_dotenv
 import google.generativeai as genai
+import google.ai.generativelanguage as glm
+from google.api_core import client_options
+from google.api_core.gapic_v1.client_info import ClientInfo
+from google.api_core.retry import Retry
+from google.auth.transport.requests import Request
+from google.generativeai.client import get_client
 
 # --- 1. Initialization and Configuration ---
 # Load environment variables and configure the API key
@@ -24,8 +30,14 @@ st.set_page_config(
 try:
     if GOOGLE_API_KEY:
         genai.configure(api_key=GOOGLE_API_KEY)
-        # Updated to use the specified gemini-2.5-pro model
         MODEL = genai.GenerativeModel("gemini-2.5-pro")
+
+        # ✅ PATCH: Extend Gemini request timeout to 180 seconds
+        transport = get_client()._transport
+        transport._client._client_options = client_options.ClientOptions()
+        transport._client._client_info = ClientInfo()
+        transport._client._request = Request(timeout=180.0)
+
     else:
         st.error("🚨 GOOGLE_API_KEY not found. Please set it in your .env file.")
         MODEL = None
