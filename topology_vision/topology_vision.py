@@ -1,395 +1,142 @@
 import os
-import base64
 import logging
 from PIL import Image
 from io import BytesIO
 import streamlit as st
-from pathlib import Path
-from openai import OpenAI
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-# Load API keys
+# --- 1. Initialization and Configuration ---
+# Load environment variables and configure the API key
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Logging configuration
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 
+# Configure the Streamlit page
 st.set_page_config(
-    page_title="Selector Visual Config Generator",  # Custom title for the tab
-    page_icon="🔍"  # Magnifying glass emoji
+    page_title="Visual Config Generator",
+    page_icon="🔍"
 )
 
-# Convert image to base64 string (OpenAI expects this format)
-def image_to_base64(image: Image.Image) -> str:
-    buffered = BytesIO()
-    image.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+# Configure the Gemini client once and reuse it
+try:
+    if GOOGLE_API_KEY:
+        genai.configure(api_key=GOOGLE_API_KEY)
+        # Updated to use the specified gemini-2.5-pro model
+        MODEL = genai.GenerativeModel("gemini-2.5-pro")
+    else:
+        st.error("🚨 GOOGLE_API_KEY not found. Please set it in your .env file.")
+        MODEL = None
+except Exception as e:
+    st.error(f"Failed to initialize Gemini model: {e}")
+    MODEL = None
 
-# OpenAI analyzes the image (multimodal)
-def openai_analysis(base64_image, prompt):
-    messages = [
-        {
-            "role": "user",
-            "content": [
-f"""
-You are a senior network automation engineer.
 
-Analyze the uploaded network topology diagram alongside this textual goal: "{prompt}"
+# --- 2. Core AI Function (Single-Pass) ---
+def generate_config_single_pass(image: Image.Image, prompt: str):
+    """
+    Analyzes the network diagram and prompt in a single pass to generate a final configuration.
+    """
+    if not MODEL:
+        raise ConnectionError("Gemini model is not initialized. Check API key.")
 
-** Important Guardrails: **
-If the uploaded image is not a network topology diagram, do not generate any configuration. Instead, return an error message indicating that the image is not suitable for configuration generation. For example if they upload the image of a hotdog.
+    # This single, detailed prompt combines the best of your previous prompts.
+    final_prompt = f"""
+    You are an expert network automation engineer. Your task is to generate a production-ready, Cisco-style CLI configuration based on an uploaded network diagram and a textual goal.
 
-Generate **device-level configuration blocks** for all visible routers and switches. Assume routers operate at Layer3 and switches at Layer2. Do not enable routing on switches unless explicitly mentioned in the prompt or visible in the diagram.
+    **Primary Goal:**
+    Analyze the network topology diagram and the following user request to generate complete and accurate device configurations.
+    - **User Request:** "{prompt}"
 
-Unless otherwise specified, assume all routers and switches have management IPs configured and are reachable. Do not assume any specific IP addresses or VLANs unless they are explicitly mentioned in the prompt or visible in the diagram.
----
+    ---
+    **Configuration Guidelines & Best Practices:**
 
-🔍 Focus Areas (if visible in the diagram or implied by prompt):
+    **General:**
+    - Assume routers operate at Layer 3 and switches at Layer 2.
+    - Do not enable routing on switches unless explicitly required.
+    - Do not invent IP addresses or VLANs unless they are present in the diagram or prompt.
 
-- VLANs and inter-VLAN routing
-- Subnetting and interface IP addressing
-- OSPF, BGP, EIGRP, or IS-IS routing (with correct areas/ASNs)
-- Spanning Tree configuration (e.g., root bridge, mode)
-- VRFs, ACLs, NAT, trunk/access port settings
-- High availability (e.g., HSRP, VRRP)
-- Explicit interface names and types
-- Logical groupings per device (R1, SW2, etc.)
-- Do *not* make assumptions about adding anything not visible in the diagram or specified in the prompt
-    -- Do NOT abitrarily add interfaces, VLANs, or protocols or management addresses not shown in the diagram
-    -- Do NOT add any placeholder text like "x.x.x.x" or "VLAN 100" unless explicitly mentioned in the prompt
-    -- Do NOT add any comments or explanations in the configuration blocks
-- Do not add ```text or ```bash tags around the configuration blocks
----
+    **Interfaces:**
+    - **Access Ports:** Use `switchport mode access`, assign a `switchport access vlan`, and enable `spanning-tree portfast` and `bpduguard`.
+    - **Trunk Ports:** Use `switchport mode trunk`, `switchport trunk encapsulation dot1q`, and specify `switchport trunk allowed vlan`.
+    - **Always assume intefaces should be enabled if you add configuration to them unless specified otherwise.
 
-📘 Best Practices and Configuration Guidelines
+    **Routing Protocols:**
+    *** OSPF (Open Shortest Path First) ***:
+     - Configure the process using router ospf <process-id>.
+     - Define a unique router-id for each device, preferably from a stable loopback interface.
+     - Advertise networks using network <IP-address> <wildcard-mask> area <area-id>.
+     - Use area 0 for the backbone. Other non-backbone areas must connect to area 0.
+     - Prevent routing updates on LAN-facing interfaces with passive-interface <interface-name>.
+     - Manually tune paths by setting ip ospf cost <value> on interfaces.
+    
+    *** BGP (Border Gateway Protocol) ***:
+     - Define the local router's ASN with router bgp <local-ASN>.
+     - Establish neighborships using neighbor <IP-address> remote-as <remote-ASN>.
+     - For iBGP, ensure neighbors have update-source loopback0 and next-hop-self configured where appropriate.
+     - For eBGP, neighbors are typically on directly connected links.
+     - Activate address families like address-family ipv4 unicast to exchange prefixes.
+     - Advertise local networks with the network <prefix> mask <mask> command.
+     - Implement policy control using route-map applied to neighbors.
 
-🔹 **Access Interfaces**
-- Use `switchport mode access`
-- Assign the correct `switchport access vlan`
-- Enable `spanning-tree portfast`
-- Enable `spanning-tree bpduguard enable`
-- Add `description` for the port (e.g., `description User Port`)
-  
-🔹 **Trunk Interfaces**
-- Use `switchport trunk encapsulation dot1q` (if required)
-- Use `switchport mode trunk`
-- Explicitly list allowed VLANs: `switchport trunk allowed vlan X,Y,Z`
-- Enable `spanning-tree portfast trunk` on edge trunk ports if safe
+    *** EIGRP (Enhanced Interior Gateway Routing Protocol) ***:
+     - Enable the process with router eigrp <ASN>. Named mode (router eigrp <NAME>) is preferred.
+     - Under the address family, define the ASN: address-family ipv4 unicast autonomous-system <ASN>.
+     - Advertise networks with precise network <IP-address> <wildcard-mask> statements.
+     - Use passive-interface on links where you don't want EIGRP neighbors to form.
+     - Configure summarization on key interfaces (ip summary-address eigrp <ASN> ...) to optimize routing tables.
+     - Use eigrp stub on spoke routers in hub-and-spoke topologies.
+     
+    *** IS-IS (Intermediate System to Intermediate System) ***:
+     - Enable the routing process globally with router isis.
+     - Define the router's unique Network Entity Title (NET) address, e.g., net 49.0001.aaaa.bbbb.cccc.00. The area ID is the 49.0001 portion, and the system ID is aaaa.bbbb.cccc. The 00 is the NSEL.
+     - Specify the router's role with is-type level-1, level-2-only, or level-1-2.
+     - Enable IS-IS on a per-interface basis using ip router isis.
 
-🔹 **Spanning Tree Configuration**
-- Use `spanning-tree mode rapid-pvst` or `mst`
-- Set bridge priority: `spanning-tree vlan X priority 4096` for core switches
-- Avoid using `spanning-tree portfast` on core uplinks
+    *** Static Routing ***:
+     - Use for simple, predictable paths or as a backup.
+     - Define a route with ip route <destination-prefix> <subnet-mask> <next-hop-IP | exit-interface>.
+     - Create a floating static route for backup by adding a higher administrative distance (e.g., ip route ... 250). This route only becomes active if the primary, lower-distance route fails.
+     - Define a default route to catch all traffic not otherwise specified in the routing table using ip route 0.0.0.0 0.0.0.0 <next-hop-IP | exit-interface>.
 
-🔹 **OSPF Configuration**
-- Use correct area IDs (e.g., area 0 for backbone)
-- Use loopbacks as router IDs where possible
-- Use `passive-interface` for access interfaces
-- Use `ip ospf cost` to tune metrics on interfaces
+    **Security:**
+    - Apply basic hardening: `service password-encryption`, `no ip http server`.
+    - Use named ACLs (`ip access-list extended NAME`) when security rules are requested.
 
-🔹 **BGP Configuration**
-- Define local ASN: `router bgp <ASN>`
-- Use `neighbor <IP> remote-as <ASN>` for external peers
-- Use `update-source loopback0` if peering via loopbacks
-- Include network statements or redistribute routes properly
+    ---
+    **Output Instructions (Crucial):**
 
-🔹 **EIGRP Configuration**
-- Use named EIGRP if possible
-- Define `network` statements appropriately
-- Use `passive-interface` on unused links
-- Configure `hello`/`hold` timers for WAN links if needed
+    - **CRITICAL:** Return **only** the clean, ready-to-use CLI configuration blocks.
+    - Group the configuration logically for each device using a comment header (e.g., `! Device: R1`).
+    - Use consistent indentation.
+    - Do **not** include any explanations, commentary, markdown formatting (like ```), or conversational text in your output.
+    """
 
-🔹 **IS-IS Configuration**
-- Enable IS-IS on interfaces: `ip router isis`
-- Use net-id: `net 49.0001.0000.0000.0001.00`
-- Define levels: `is-type level-2-only`
-- Assign unique system IDs per router
-
-🔹 **Static Routes**
-- Use `ip route` with next-hop or exit-interface
-- Avoid circular routing or black holes
-
-🔹 **ACLs and Security**
-- Use named ACLs with `ip access-list extended NAME`
-- Place ACLs closest to the source when possible
-- Include `deny ip any any log` at the end for audit
-- Use `access-class` on VTY lines to restrict access
-- Enable `service password-encryption` and `no ip http server`
-
----
-
-📌 Output Instructions:
-
-- Return only clean, production-ready Cisco-style CLI configuration blocks
-- Group by device (clearly separate each config)
-- Use consistent indentation and interface naming
-- Do **not** include explanations, markdown formatting, or triple backticks
-"""
-,
-                {"image": base64_image, "resize": 768},
-            ],
-        }
-    ]
-    result = openai_client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=messages,
-        max_tokens=2000,
-    )
-    return result.choices[0].message.content.strip()
-
-# Gemini analyzes the image
-def gemini_analysis(image: Image.Image, prompt):
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-pro")
-
-    response = model.generate_content(
-        [
-            image,
-f"""
-You are a senior network automation engineer.
-
-Analyze the uploaded network topology diagram alongside this textual goal: "{prompt}"
-
-Generate **device-level configuration blocks** for all visible routers and switches. Assume routers operate at Layer3 and switches at Layer2. Do not enable routing on switches unless explicitly mentioned in the prompt or visible in the diagram.
-
-Unless otherwise specified, assume all routers and switches have management IPs configured and are reachable. Do not assume any specific IP addresses or VLANs unless they are explicitly mentioned in the prompt or visible in the diagram.
----
-
-🔍 Focus Areas (if visible in the diagram or implied by prompt):
-
-- VLANs and inter-VLAN routing
-- Subnetting and interface IP addressing
-- OSPF, BGP, EIGRP, or IS-IS routing (with correct areas/ASNs)
-- Spanning Tree configuration (e.g., root bridge, mode)
-- VRFs, ACLs, NAT, trunk/access port settings
-- High availability (e.g., HSRP, VRRP)
-- Explicit interface names and types
-- Logical groupings per device (R1, SW2, etc.)
-
----
-
-📘 Best Practices and Configuration Guidelines
-
-🔹 **Access Interfaces**
-- Use `switchport mode access`
-- Assign the correct `switchport access vlan`
-- Enable `spanning-tree portfast`
-- Enable `spanning-tree bpduguard enable`
-- Add `description` for the port (e.g., `description User Port`)
-  
-🔹 **Trunk Interfaces**
-- Use `switchport trunk encapsulation dot1q` (if required)
-- Use `switchport mode trunk`
-- Explicitly list allowed VLANs: `switchport trunk allowed vlan X,Y,Z`
-- Enable `spanning-tree portfast trunk` on edge trunk ports if safe
-
-🔹 **Spanning Tree Configuration**
-- Use `spanning-tree mode rapid-pvst` or `mst`
-- Set bridge priority: `spanning-tree vlan X priority 4096` for core switches
-- Avoid using `spanning-tree portfast` on core uplinks
-
-🔹 **OSPF Configuration**
-- Use correct area IDs (e.g., area 0 for backbone)
-- Use loopbacks as router IDs where possible
-- Use `passive-interface` for access interfaces
-- Use `ip ospf cost` to tune metrics on interfaces
-
-🔹 **BGP Configuration**
-- Define local ASN: `router bgp <ASN>`
-- Use `neighbor <IP> remote-as <ASN>` for external peers
-- Use `update-source loopback0` if peering via loopbacks
-- Include network statements or redistribute routes properly
-
-🔹 **EIGRP Configuration**
-- Use named EIGRP if possible
-- Define `network` statements appropriately
-- Use `passive-interface` on unused links
-- Configure `hello`/`hold` timers for WAN links if needed
-
-🔹 **IS-IS Configuration**
-- Enable IS-IS on interfaces: `ip router isis`
-- Use net-id: `net 49.0001.0000.0000.0001.00`
-- Define levels: `is-type level-2-only`
-- Assign unique system IDs per router
-
-🔹 **Static Routes**
-- Use `ip route` with next-hop or exit-interface
-- Avoid circular routing or black holes
-
-🔹 **ACLs and Security**
-- Use named ACLs with `ip access-list extended NAME`
-- Place ACLs closest to the source when possible
-- Include `deny ip any any log` at the end for audit
-- Use `access-class` on VTY lines to restrict access
-- Enable `service password-encryption` and `no ip http server`
-
----
-
-📌 Output Instructions:
-
-- Return only clean, production-ready Cisco-style CLI configuration blocks
-- Group by device (clearly separate each config)
-- Use consistent indentation and interface naming
-- Do **not** include explanations, markdown formatting, or triple backticks
-"""
-        ],
+    response = MODEL.generate_content(
+        [image, final_prompt],
         generation_config={"temperature": 0.4}
     )
-
     return response.text.strip()
 
-# Gemini reviews and improves OpenAI's config
-def gemini_review(openai_output: str):
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-pro")
 
-    response = model.generate_content([
-        f"""
-You are a senior network engineer reviewing a Cisco-style configuration generated by another AI model (OpenAI).
-
-Unless otherwise specified, assume all routers and switches have management IPs configured and are reachable. Do not assume any specific IP addresses or VLANs unless they are explicitly mentioned in the prompt or visible in the diagram.
-
-Please perform a line-by-line audit of the configuration for:
-- Technical accuracy and syntax correctness
-- Interface consistency and VLAN accuracy
-- OSPF/BGP/EIGRP/IS-IS protocol correctness
-- STP, trunking, access port logic, and ACL alignment
-- Best practices, formatting, indentation, and readability
-
-📌 Output Instructions:
-- Return a revised version of the configuration only
-- Group configuration blocks clearly by device (e.g., R1, SW2)
-- Do not include explanations, commentary, markdown, or triple backticks
-- Use production-ready syntax — no placeholders unless unavoidable
-
-Here is the original configuration to review and improve:
-{openai_output}
-"""
-    ])
-    return response.text.strip()
-
-# OpenAI reviews and improves Gemini's config
-def openai_review(gemini_output: str):
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a senior Cisco network engineer reviewing a configuration generated by another AI (Google Gemini)."
-        },
-        {
-            "role": "user",
-            "content": f"""
-You are a senior network engineer reviewing a Cisco-style configuration generated by another AI model (OpenAI).
-
-Unless otherwise specified, assume all routers and switches have management IPs configured and are reachable. Do not assume any specific IP addresses or VLANs unless they are explicitly mentioned in the prompt or visible in the diagram.
-
-Please perform a line-by-line audit of the configuration for:
-- Technical accuracy and syntax correctness
-- Interface consistency and VLAN accuracy
-- OSPF/BGP/EIGRP/IS-IS protocol correctness
-- STP, trunking, access port logic, and ACL alignment
-- Best practices, formatting, indentation, and readability
-
-📌 Output Instructions:
-- Return a revised version of the configuration only
-- Group configuration blocks clearly by device (e.g., R1, SW2)
-- Do not include explanations, commentary, markdown, or triple backticks
-- Use production-ready syntax — no placeholders unless unavoidable
-
-Here is the original configuration to review and improve:
-{gemini_output}
-"""
-        }
-    ]
-    result = openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        max_tokens=3000,
-    )
-    return result.choices[0].message.content.strip()
-
-# Final synthesis by OpenAI
-def gemini_synthesis(revised_openai, revised_gemini, image: Image.Image, original_prompt: str):
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-pro")
-
-    response = model.generate_content(
-        [
-            image,
-            f"""
-You are a senior network automation engineer.
-
-Unless otherwise specified, assume all routers and switches have management IPs configured and are reachable. Do not assume any specific IP addresses or VLANs unless they are explicitly mentioned in the prompt or visible in the diagram.
-
-You are given two independently reviewed Cisco-style configurations for a network topology diagram and a configuration prompt. Your task is to synthesize the best ideas from both into a single, final configuration.
-
----
-
-📄 Original Prompt:
-\"\"\"
-{original_prompt}
-\"\"\"
-
-🔵 Revised OpenAI configuration:
-{revised_openai}
-
-🟢 Revised Gemini configuration:
-{revised_gemini}
-
----
-
-🎯 Synthesis Objectives:
-
-1. **Merge** the most accurate and optimized parts from both inputs
-2. **Resolve conflicts** where OpenAI and Gemini disagree — prefer correctness, clarity, and Cisco best practices
-3. **Eliminate duplication** (e.g., repeated interface blocks or identical routing statements)
-4. **Group configuration blocks by device** (e.g., R1, SW1, etc.) with clear separation
-5. **Validate logic** across routing, VLANs, ACLs, STP, redundancy, and interface assignments
-
----
-
-📌 Output Requirements:
-
-- Return only clean, production-ready CLI configuration blocks
-- Use Cisco-style syntax with consistent indentation
-- Group by device with headers (e.g., `! Device: R1`)
-- Do **not** include explanations, commentary, or markdown formatting
-- Do **not** use triple backticks, code blocks, or tags like "plaintext"
-- Avoid any placeholder text unless absolutely necessary (e.g., `x.x.x.x`)
-
----
-Now generate the final configuration.
-"""
-        ],
-        generation_config={"temperature": 0.7}
-    )
-
-    return response.text.strip()
-
-# UI
+# --- 3. Streamlit User Interface ---
 st.image('logo.jpeg')
 st.title("🧠 Visual Configuration Generator")
+
+# Updated markdown to reflect the simplified, single-pass pipeline
 st.markdown("""
-Welcome to the **Selector Visual Configuration Generator** — a multimodal AI-powered tool designed to analyze your **network diagrams** and generate optimized, CLI-style configurations.
+Welcome to the **Visual Configuration Generator** — a tool designed to analyze your **network diagrams** and generate optimized CLI configurations.
 
 ---
 
 ### ⚙️ How It Works
 
-1. **Upload a network diagram** (PNG, JPG, or JPEG).
-2. **Describe your configuration goal** — this **text prompt is just as important as the image**.  
-   The more context you provide (e.g., device roles, protocols, design intentions), the better the output.
-3. Our AI pipeline will:
-   - 🧠 Use **OpenAI** to generate an initial configuration from the image and prompt
-   - 🤖 Use **Google Gemini** to generate a second, independent interpretation
-   - 🔄 Cross-review both configurations for correctness and consistency
-   - 🧬 Merge them into a **final, clean, and optimized configuration**
-4. ✅ View, explain, and **download** your final device configurations.
+1.  **Upload a network diagram** (PNG, JPG, or JPEG).
+2.  **Describe your configuration goal**. The more context you provide (device roles, protocols, etc.), the better the output.
+3.  Our AI pipeline, powered by **Google's Gemini 2.5 Pro**, will perform a comprehensive analysis to generate a single, optimized configuration.
+4.  ✅ View, explain, and **download** your final device configurations.
 
 ---
 
@@ -406,102 +153,73 @@ Welcome to the **Selector Visual Configuration Generator** — a multimodal AI-p
 
 The more **textual detail** you give, the more accurate and useful your configuration will be.
 
+
 ---
 """)
 
-st.markdown("## 🧪 Sample Topology Diagrams")
-st.markdown("### 🧰 Try These Network Topology Examples")
-
-# Load and show the samples
-col1, col2 = st.columns(2)
-
-with col1:
-    st.image("ros.png", caption="Router on a Stick", use_container_width =True)
-    with open("ros.png", "rb") as f:
-        st.download_button("📥 Download ROS Sample", f, file_name="ros.png")
-
-with col2:
-    st.image("napkin.png", caption="Napkin Diagram", use_container_width =True)
-    with open("napkin.png", "rb") as f:
-        st.download_button("📥 Download Napkin Sample", f, file_name="napkin.png")
-
-st.markdown("### 📤 Upload Your Own Network Diagram")
-
+# --- UI for File Upload and Prompt ---
 uploaded_file = st.file_uploader("Upload network diagram (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
-
-prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inter-VLAN routing and ACLs for a dual-router setup")
+prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.")
 
 if st.button("Submit"):
-    if uploaded_file and prompt:
-        image = Image.open(uploaded_file)
-        base64_img = image_to_base64(image)
+    if uploaded_file and prompt and MODEL:
+        try:
+            image = Image.open(uploaded_file)
 
-        st.info("⚙️ Processing your diagram and generating configurations...")
+            # Store image in session state for redisplay after rerun
+            st.session_state["image_cache"] = image
 
-        # Step 1 - Raw OpenAI output
-        with st.spinner("🧠 OpenAI analyzing image and generating initial proposal..."):
-            openai_raw = openai_analysis(base64_img, prompt)
+            st.info("⚙️ Processing your diagram and generating the configuration...")
 
-        # Step 2 - Raw Gemini output
-        with st.spinner("🤖 Gemini analyzing image and generating initial proposal..."):
-            gemini_raw = gemini_analysis(image, prompt)
+            # --- Simplified Logic: Single spinner and function call ---
+            with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
+                final_config = generate_config_single_pass(image, prompt)
+                st.session_state["final_config"] = final_config
 
-        # Step 3 - Gemini reviews OpenAI
-        with st.spinner("🔍 Gemini reviewing OpenAI's configuration..."):
-            revised_openai = gemini_review(openai_raw)
+            st.success("✅ Configuration generation complete!")
 
-        # Step 4 - OpenAI reviews Gemini
-        with st.spinner("🔍 OpenAI reviewing Gemini's configuration..."):
-            revised_gemini = openai_review(gemini_raw)
+        except Exception as e:
+            st.error(f"An error occurred during generation: {e}")
+            logging.error(f"Configuration generation failed: {e}")
 
-        # Step 5 - Final synthesis
-        with st.spinner("🧬 Synthesizing final configuration..."):
-            final_config = gemini_synthesis(revised_openai, revised_gemini, image, prompt)
-            st.session_state["final_config"] = final_config
-
-        st.success("✅ Configuration generation complete!")
-
-        # 🧩 Final result outside expander
-        st.subheader("🧩 Final Merged Configuration")
-        st.image(image, caption="Uploaded Network Diagram")
-        st.code(final_config, language="bash")
-
-        # 🔬 Intermediate results inside expander
-        with st.expander("🔬 View Intermediate AI Steps", expanded=False):
-            st.markdown("##### 📦 OpenAI Raw Configuration")
-            st.code(openai_raw, language="bash")
-
-            st.markdown("##### 🤖 Gemini Raw Configuration")
-            st.code(gemini_raw, language="bash")
-
-            st.markdown("##### 🔍 Gemini-Revised OpenAI Configuration")
-            st.code(revised_openai, language="bash")
-
-            st.markdown("##### 🔍 OpenAI-Revised Gemini Configuration")
-            st.code(revised_gemini, language="bash")
     else:
-        st.warning("⚠️ Please upload a diagram and provide a configuration goal.")
+        if not uploaded_file:
+            st.warning("⚠️ Please upload a diagram.")
+        if not prompt:
+            st.warning("⚠️ Please provide a configuration goal.")
+        if not MODEL:
+             st.error("🚨 Model not available. Please check your API key configuration.")
 
-# 🔁 Post-submit UI: only shows if config was generated
-if "final_config" in st.session_state:   
-    if "uploaded_image_bytes" in st.session_state:
-        st.image(st.session_state["uploaded_image_bytes"], caption="Uploaded Network Diagram", use_container_width=True)
+
+# --- Post-generation UI (Explain & Download) ---
+if "final_config" in st.session_state:
+    st.subheader("🧩 Final Configuration")
+    if "image_cache" in st.session_state:
+        st.image(st.session_state["image_cache"], caption="Uploaded Network Diagram")
+    st.code(st.session_state["final_config"], language="bash")
+
     # Explanation button
     if st.button("🧠 Explain This Configuration"):
         with st.spinner("Explaining the final configuration..."):
-            explanation = openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You're a Cisco network instructor."},
-                    {"role": "user", "content": f"Explain the following configuration:\n{st.session_state['final_config']}"}
-                ]
-            ).choices[0].message.content.strip()
-        st.markdown(explanation)
+            try:
+                explanation_prompt = f"""
+                You are a helpful Cisco network instructor. Your tone should be educational and clear.
+                Please provide a detailed, section-by-section explanation for the following network configuration.
+                Use markdown for formatting.
+                ---
+                Configuration to Explain:
+                {st.session_state['final_config']}
+                """
+                response = MODEL.generate_content(explanation_prompt)
+                explanation = response.text.strip()
+                st.markdown(explanation)
+            except Exception as e:
+                st.error(f"An error occurred while generating the explanation: {e}")
 
     # Download button
     st.download_button(
         label="📥 Download Final Configuration",
         data=st.session_state["final_config"],
-        file_name="Selector_Configuration_Vision_Recommended_Config.md",
+        file_name="generated_network_config.txt",
         mime="text/plain",
     )
