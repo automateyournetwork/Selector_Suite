@@ -200,9 +200,8 @@ if st.button("🚀 Submit to Gemini"):
 
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
-                st.session_state["final_config"] = final_config
-                st.session_state["final_config_ready"] = True
-                st.session_state["final_explanation"] = None  # Reset any old explanation
+                st.subheader("🧩 Final Configuration (Direct Output)")
+                st.code(final_config, language="bash")
 
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
