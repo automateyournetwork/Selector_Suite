@@ -186,25 +186,27 @@ The more **textual detail** you give, the more accurate and useful your configur
 uploaded_file = st.file_uploader("Upload network diagram (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
 prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.")
 
-if st.button("Submit"):
+# --- Submit Button Handler ---
+if st.button("🚀 Submit to Gemini"):
     if uploaded_file and prompt and MODEL:
         try:
             image = Image.open(uploaded_file)
 
-            # 🧠 Store image and prompt before rerun
+            # 🧠 Store image and prompt in session
             st.session_state["image_cache"] = image
-            st.session_state["prompt_cache"] = prompt  # optional
+            st.session_state["prompt_cache"] = prompt
 
             st.info("⚙️ Processing your diagram and generating the configuration...")
 
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
                 st.session_state["final_config"] = final_config
+                st.session_state["final_config_ready"] = True  # ✅ Trigger UI rendering
 
-            # ✅ Store result last (to trigger rerun after everything else is ready)
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
             logging.error(f"Configuration generation failed: {e}")
+            st.session_state["final_config_ready"] = False
 
     else:
         if not uploaded_file:
@@ -213,10 +215,10 @@ if st.button("Submit"):
             st.warning("⚠️ Please provide a configuration goal.")
         if not MODEL:
             st.error("🚨 Model not available. Please check your API key configuration.")
+        st.session_state["final_config_ready"] = False
 
-# --- Post-generation UI (Explain & Download) ---
 # --- Post-generation UI ---
-if "final_config" in st.session_state:
+if st.session_state.get("final_config_ready"):
     st.subheader("🧩 Final Configuration")
 
     if "image_cache" in st.session_state:
@@ -224,6 +226,7 @@ if "final_config" in st.session_state:
 
     st.code(st.session_state["final_config"], language="bash")
 
+    # 🧠 Explanation button triggers markdown generation + persistence
     if st.button("🧠 Explain This Configuration"):
         with st.spinner("Explaining the final configuration..."):
             try:
@@ -236,11 +239,16 @@ if "final_config" in st.session_state:
                 {st.session_state['final_config']}
                 """
                 response = MODEL.generate_content(explanation_prompt)
-                explanation = response.text.strip()
-                st.markdown(explanation)
+                st.session_state["final_explanation"] = response.text.strip()
             except Exception as e:
                 st.error(f"An error occurred while generating the explanation: {e}")
+                st.session_state["final_explanation"] = None
 
+    # 📘 Show explanation if available
+    if "final_explanation" in st.session_state:
+        st.markdown(st.session_state["final_explanation"])
+
+    # 📥 Download
     st.download_button(
         label="📥 Download Final Configuration",
         data=st.session_state["final_config"],
