@@ -148,18 +148,22 @@ class VisualConfigGenerator:
             return None
 
 # --- Trigger Logic ---
+# --- Trigger Logic ---
 if st.button("🚀 Submit to Topology Vision"):
     if uploaded_file and prompt and MODEL:
         st.session_state["trigger_config"] = True
         st.session_state["prompt_text"] = prompt
         st.session_state["uploaded_image"] = uploaded_file.getvalue()
-        st.session_state["final_config_ready"] = False  # clear old results
-        st.rerun()
+        st.session_state["final_config_ready"] = False
+        st.session_state["final_explanation"] = None
+        st.rerun()  # force clean rerun after setting state
     else:
         st.warning("Please provide all required inputs.")
 
 # --- Process and Display Output ---
-if st.session_state.get("trigger_config"):
+if st.session_state.get("trigger_config", False):
+    st.session_state["trigger_config"] = False  # <-- immediately kill the flag
+
     image = Image.open(BytesIO(st.session_state["uploaded_image"]))
     generator = VisualConfigGenerator(MODEL, st.session_state["prompt_text"], image)
 
@@ -173,7 +177,7 @@ if st.session_state.get("trigger_config"):
         st.error("Gemini failed to generate configuration.")
         st.session_state["final_config_ready"] = False
 
-    st.session_state["trigger_config"] = False
+    st.rerun() 
 
 # --- Render Config Output ---
 if st.session_state.get("final_config_ready"):
