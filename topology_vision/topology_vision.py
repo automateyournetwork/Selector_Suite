@@ -42,6 +42,10 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     if not MODEL:
         raise ConnectionError("Gemini model is not initialized. Check API key.")
 
+    # Log image details
+    logging.info(f"Image format: {image.format}, mode: {image.mode}, size: {image.size}")
+    st.write(f"Image format: {image.format}, mode: {image.mode}, size: {image.size}")
+
     # This single, detailed prompt combines the best of your previous prompts.
     final_prompt = f"""
     You are an expert network automation engineer. Your task is to generate a production-ready, Cisco-style CLI configuration based on an uploaded network diagram and a textual goal.
@@ -118,7 +122,8 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
         [image, final_prompt],
         generation_config={"temperature": 0.4}
     )
-    st.write(response)
+    st.write("✅ Gemini returned a response.")
+    st.write(response)  # Show entire response object
     return response.text.strip()
 
 
