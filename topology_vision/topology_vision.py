@@ -184,28 +184,35 @@ else:
     file_bytes = st.session_state.get("uploaded_file_bytes", None)
 
 if st.button("Submit"):
+    st.write("Submit button pressed")  # Debug
+    logging.info("Submit button pressed")  # Debug
     if file_bytes and prompt and MODEL:
         try:
-            # Reconstruct the image from bytes
+            st.write("Reconstructing image from bytes...")  # Debug
             image = Image.open(BytesIO(file_bytes))
 
-            # Store image in session state for redisplay after rerun (store bytes, not PIL image)
+            st.write("Storing image bytes in session state...")  # Debug
             st.session_state["image_cache_bytes"] = file_bytes
 
             st.info("⚙️ Processing your diagram and generating the configuration...")
 
-            # --- Simplified Logic: Single spinner and function call ---
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
+                st.write("Calling Gemini model...")  # Debug
                 final_config = generate_config_single_pass(image, prompt)
+                st.write("Gemini response received")  # Debug
+                st.write(final_config)  # Debug: Show the raw config
                 st.session_state["final_config"] = final_config
+                logging.info("Final config stored in session state")  # Debug
 
             st.success("✅ Configuration generation complete!")
 
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
+            st.write(f"Exception: {e}")  # Debug
             logging.error(f"Configuration generation failed: {e}")
 
     else:
+        st.write(f"file_bytes: {file_bytes}, prompt: {prompt}, MODEL: {MODEL}")  # Debug
         if not file_bytes:
             st.warning("⚠️ Please upload a diagram.")
         if not prompt:
