@@ -6,44 +6,63 @@ import streamlit as st
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-# --- 1. Initialization and Configuration ---
-# Load environment variables and configure the API key
+# --- Initialization ---
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 
-# Configure the Streamlit page
-st.set_page_config(
-    page_title="Visual Config Generator",
-    page_icon="🔍"
-)
+st.set_page_config(page_title="Visual Config Generator", page_icon="🔍")
+st.image("logo.jpeg")
+st.title("🧠 Visual Configuration Generator")
 
-# Configure the Gemini client once and reuse it
-try:
-    if GOOGLE_API_KEY:
+# --- Model Setup ---
+MODEL = None
+if GOOGLE_API_KEY:
+    try:
         genai.configure(api_key=GOOGLE_API_KEY)
-        # Updated to use the specified gemini-2.5-pro model
         MODEL = genai.GenerativeModel("gemini-2.5-pro")
-    else:
-        st.error("🚨 GOOGLE_API_KEY not found. Please set it in your .env file.")
-        MODEL = None
-except Exception as e:
-    st.error(f"Failed to initialize Gemini model: {e}")
-    MODEL = None
+    except Exception as e:
+        st.error(f"Failed to initialize Gemini model: {e}")
+else:
+    st.error("🚨 GOOGLE_API_KEY not found. Please set it in your .env file.")
 
+# --- Prompt Instructions ---
+st.markdown("""
+Welcome to the **Visual Configuration Generator**
 
-# --- 2. Core AI Function (Single-Pass) ---
-def generate_config_single_pass(image: Image.Image, prompt: str):
-    """
-    Analyzes the network diagram and prompt in a single pass to generate a final configuration.
-    """
-    if not MODEL:
-        raise ConnectionError("Gemini model is not initialized. Check API key.")
+---
+### ⚙️ How It Works
+1. **Upload a network diagram** (PNG, JPG, or JPEG).
+2. **Describe your configuration goal**.
+3. Google's **Gemini 2.5 Pro** will analyze both and generate optimized CLI configurations.
+4. ✅ View and download your final device configurations.
 
-    # This single, detailed prompt combines the best of your previous prompts.
-    final_prompt = f"""
+---
+### ✍️ Prompt Tips
+- Be specific: _"Inter-VLAN routing with ACLs blocking Guest-to-Admin traffic"_
+- Mention protocols: _"Use OSPF area 0 between routers"_
+- Design intent: _"Router 1 is WAN edge, Router 2 is core"_
+- Operating systems: _"Cisco IOS, Juniper Junos"_
+- Security: _"ACLs to restrict access between VLANs"_
+- Redundancy: _"Use HSRP for gateway redundancy"_
+- Features: _"Enable DHCP snooping on VLAN 10"_
+- Include tables if applicable
+---
+""")
+
+# --- Upload UI ---
+uploaded_file = st.file_uploader("Upload network diagram", type=["png", "jpg", "jpeg"])
+prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.")
+
+# --- Generator Class ---
+class VisualConfigGenerator:
+    def __init__(self, model, prompt, image):
+        self.model = model
+        self.prompt = prompt
+        self.image = image
+
+    def build_prompt(self):
+        return f"""
     You are an expert network automation engineer. Your task is to generate a production-ready, Cisco-style CLI configuration based on an uploaded network diagram and a textual goal.
 
     **Primary Goal:**
@@ -114,143 +133,69 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     - Do **not** include any explanations, commentary, markdown formatting (like ```), or conversational text in your output.
     """
 
-    try:
-        st.write("🤖 Analyzing the diagram and prompt...")
-        logging.info("Sending request to Gemini model...")
-
-        response = MODEL.generate_content(
-            [image, final_prompt],
-            generation_config={"temperature": 0.4},
-            request_options={"timeout": 180}  # ⏱ Extend timeout to 3 minutes
-        )
-
-        logging.info("Gemini model response received")
-
-        if not response:
-            st.error("❌ No response received from Gemini model.")
-            logging.error("Gemini response was None")
-            return ""
-
-        if not hasattr(response, "text"):
-            st.error("❌ Unexpected response format from Gemini model.")
-            logging.error(f"Gemini response object: {response}")
-            return ""
-
-        result = response.text.strip()
-        logging.info(f"Generated config length: {len(result)} characters")
-        return result
-
-    except Exception as e:
-        st.error(f"🚨 Error while generating configuration: {e}")
-        logging.exception("Gemini model call failed")
-        return ""
-
-
-
-# --- 3. Streamlit User Interface ---
-st.image('logo.jpeg')
-st.title("🧠 Visual Configuration Generator")
-
-# Updated markdown to reflect the simplified, single-pass pipeline
-st.markdown("""
-Welcome to the **Visual Configuration Generator** — a tool designed to analyze your **network diagrams** and generate optimized CLI configurations.
-
----
-
-### ⚙️ How It Works
-
-1.  **Upload a network diagram** (PNG, JPG, or JPEG).
-2.  **Describe your configuration goal**. The more context you provide (device roles, protocols, etc.), the better the output.
-3.  Our AI pipeline, powered by **Google's Gemini 2.5 Pro**, will perform a comprehensive analysis to generate a single, optimized configuration.
-4.  ✅ View, explain, and **download** your final device configurations.
-
----
-
-### ✍️ Prompt Tips for Best Results
-
-- Be specific: _“Inter-VLAN routing with ACLs blocking Guest-to-Admin traffic”_
-- Mention desired protocols: _“Use OSPF area 0 between routers”_
-- Clarify design intent: _“Router 1 is WAN edge, Router 2 is core”_
-- Include the operating systems if they are no present in the diagram: _“Cisco IOS, Juniper Junos”_
-- Describe any **security requirements**: _“ACLs to restrict access between VLANs”_
-- Specify **redundancy**: _“Use HSRP for gateway redundancy”_
-- Mention any **specific features**: _“Enable DHCP snooping on VLAN 10”_
-- If you have a **table of IP addresses** or VLANs, include it in the prompt.
-
-The more **textual detail** you give, the more accurate and useful your configuration will be.
-
-
----
-""")
-
-# --- UI for File Upload and Prompt ---
-uploaded_file = st.file_uploader("Upload network diagram (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
-prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.")
-
-# --- Submit Button Handler ---
-if st.button("🚀 Submit to Gemini"):
-    if uploaded_file and prompt and MODEL:
+    def run(self):
         try:
-            # 🧠 Store prompt text (images can't be pickled)
-            st.session_state["prompt_cache"] = prompt
-
-            st.info("⚙️ Processing your diagram and generating the configuration...")
-
-            image = Image.open(uploaded_file)
-
-            with st.status("🤖 Gemini is analyzing... please wait", expanded=True) as status:
-                final_config = generate_config_single_pass(image, prompt)
-                st.code(final_config, language="bash")
-                status.update(label="✅ Gemini finished", state="complete")
-
+            logging.info("Sending request to Gemini model...")
+            response = self.model.generate_content(
+                [self.image, self.build_prompt()],
+                generation_config={"temperature": 0.4},
+                request_options={"timeout": 180}
+            )
+            logging.info("Gemini model response received")
+            return response.text.strip() if hasattr(response, "text") else None
         except Exception as e:
-            st.error(f"An error occurred during generation: {e}")
-            logging.error(f"Configuration generation failed: {e}")
-            st.session_state["final_config_ready"] = False
+            logging.error(f"Gemini failed: {e}")
+            return None
+
+# --- Trigger Logic ---
+if st.button("🚀 Submit to Topology Vision"):
+    if uploaded_file and prompt and MODEL:
+        st.session_state["trigger_config"] = True
+        st.session_state["prompt_text"] = prompt
+        st.session_state["uploaded_image"] = uploaded_file.getvalue()
+        st.rerun()
     else:
-        if not uploaded_file:
-            st.warning("⚠️ Please upload a diagram.")
-        if not prompt:
-            st.warning("⚠️ Please provide a configuration goal.")
-        if not MODEL:
-            st.error("🚨 Model not available. Please check your API key configuration.")
+        st.warning("Please provide all required inputs.")
+
+# --- Process and Display Output ---
+if st.session_state.get("trigger_config"):
+    image = Image.open(BytesIO(st.session_state["uploaded_image"]))
+    generator = VisualConfigGenerator(MODEL, st.session_state["prompt_text"], image)
+
+    with st.spinner("🤖 Gemini is analyzing..."):
+        result = generator.run()
+
+    if result:
+        st.session_state["final_config"] = result
+        st.session_state["final_config_ready"] = True
+    else:
+        st.error("Gemini failed to generate configuration.")
         st.session_state["final_config_ready"] = False
 
-# --- Post-generation UI ---
+    st.session_state["trigger_config"] = False
+    st.rerun()
+
+# --- Render Config Output ---
 if st.session_state.get("final_config_ready"):
     st.subheader("🧩 Final Configuration")
-
-    if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded Network Diagram")
-
     st.code(st.session_state["final_config"], language="bash")
 
-    # 🧠 Explanation button triggers markdown generation
-    if st.button("🧠 Explain This Configuration"):
-        with st.spinner("Explaining the final configuration..."):
+    if st.button("🤠 Explain This Configuration"):
+        with st.spinner("Explaining configuration..."):
             try:
-                explanation_prompt = f"""
-                You are a helpful Cisco network instructor. Your tone should be educational and clear.
-                Please provide a detailed, section-by-section explanation for the following network configuration.
-                Use markdown for formatting.
-                ---
-                Configuration to Explain:
+                explain_prompt = f"""
+                You are a helpful Cisco instructor. Explain the following CLI config section-by-section:
                 {st.session_state['final_config']}
                 """
-                response = MODEL.generate_content(explanation_prompt)
+                response = MODEL.generate_content(explain_prompt)
                 st.session_state["final_explanation"] = response.text.strip()
             except Exception as e:
-                st.error(f"An error occurred while generating the explanation: {e}")
-                st.session_state["final_explanation"] = None
+                st.error(f"Explanation error: {e}")
 
-    # 📘 Show explanation if available
     if st.session_state.get("final_explanation"):
         st.markdown(st.session_state["final_explanation"])
 
-    # 📥 Download
-    st.download_button(
-        label="📥 Download Final Configuration",
-        data=st.session_state["final_config"],
-        file_name="generated_network_config.txt",
-        mime="text/plain",
-    )
+    st.download_button("📥 Download Final Configuration",
+                       data=st.session_state["final_config"],
+                       file_name="generated_network_config.txt",
+                       mime="text/plain")
