@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from PIL import Image
 from io import BytesIO
 import streamlit as st
@@ -117,13 +118,21 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     - Use consistent indentation.
     - Do **not** include any explanations, commentary, markdown formatting (like ```), or conversational text in your output.
     """
+    logging.info("Calling Gemini with multimodal input...")
+    st.write("Calling Gemini now...")
 
     response = MODEL.generate_content(
         [image, final_prompt],
         generation_config={"temperature": 0.4}
     )
+
     st.write("✅ Gemini returned a response.")
     st.write(response)  # Show entire response object
+    if hasattr(response, "text") and response.text:
+        return response.text.strip()
+    else:
+        raise ValueError("No text returned in Gemini response")
+    
     return response.text.strip()
 
 
