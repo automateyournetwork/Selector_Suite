@@ -200,8 +200,8 @@ if st.button("Submit"):
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
                 st.session_state["final_config"] = final_config
-            
-            st.rerun()
+
+            # ✅ Store result last (to trigger rerun after everything else is ready)
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
             logging.error(f"Configuration generation failed: {e}")
