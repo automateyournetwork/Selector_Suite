@@ -41,7 +41,7 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     """
     if not MODEL:
         raise ConnectionError("Gemini model is not initialized. Check API key.")
-    st.write("🤖 Analyzing the diagram and prompt...")
+
     # This single, detailed prompt combines the best of your previous prompts.
     final_prompt = f"""
     You are an expert network automation engineer. Your task is to generate a production-ready, Cisco-style CLI configuration based on an uploaded network diagram and a textual goal.
@@ -114,11 +114,36 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     - Do **not** include any explanations, commentary, markdown formatting (like ```), or conversational text in your output.
     """
 
-    response = MODEL.generate_content(
-        [image, final_prompt],
-        generation_config={"temperature": 0.4}
-    )
-    return response.text.strip()
+    try:
+        st.write("🤖 Analyzing the diagram and prompt...")
+        logging.info("Sending request to Gemini model...")
+
+        response = MODEL.generate_content(
+            [image, final_prompt],
+            generation_config={"temperature": 0.4}
+        )
+
+        logging.info("Gemini model response received")
+
+        if not response:
+            st.error("❌ No response received from Gemini model.")
+            logging.error("Gemini response was None")
+            return ""
+
+        if not hasattr(response, "text"):
+            st.error("❌ Unexpected response format from Gemini model.")
+            logging.error(f"Gemini response object: {response}")
+            return ""
+
+        result = response.text.strip()
+        logging.info(f"Generated config length: {len(result)} characters")
+        return result
+
+    except Exception as e:
+        st.error(f"🚨 Error while generating configuration: {e}")
+        logging.exception("Gemini model call failed")
+        return ""
+
 
 
 # --- 3. Streamlit User Interface ---
@@ -174,8 +199,6 @@ if st.button("Submit"):
             # --- Simplified Logic: Single spinner and function call ---
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
-                st.write("Generated Configuration:")
-                st.code(final_config, language="bash")
                 st.session_state["final_config"] = final_config
 
             st.success("✅ Configuration generation complete!")
