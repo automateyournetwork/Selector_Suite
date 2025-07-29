@@ -121,10 +121,7 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     logging.info("Calling Gemini with multimodal input...")
     st.write("Calling Gemini now...")
 
-    response = MODEL.generate_content(
-        [image, final_prompt],
-        generation_config={"temperature": 0.4}
-    )
+    response = MODEL.generate_content(final_prompt, generation_config={"temperature": 0.4})
 
     st.write("✅ Gemini returned a response.")
     st.write(response)  # Show entire response object
