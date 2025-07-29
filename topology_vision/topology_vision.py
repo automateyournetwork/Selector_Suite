@@ -156,6 +156,23 @@ The more **textual detail** you give, the more accurate and useful your configur
 
 ---
 """)
+st.markdown("## 🧪 Sample Topology Diagrams")
+st.markdown("### 🧰 Try These Network Topology Examples")
+
+# Load and show the samples
+col1, col2 = st.columns(2)
+
+with col1:
+    st.image("ros.png", caption="Router on a Stick", use_container_width =True)
+    with open("ros.png", "rb") as f:
+        st.download_button("📥 Download ROS Sample", f, file_name="ros.png")
+
+with col2:
+    st.image("napkin.png", caption="Napkin Diagram", use_container_width =True)
+    with open("napkin.png", "rb") as f:
+        st.download_button("📥 Download Napkin Sample", f, file_name="napkin.png")
+
+st.markdown("### 📤 Upload Your Own Network Diagram")
 
 # --- UI for File Upload and Prompt ---
 uploaded_file = st.file_uploader("Upload network diagram (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
