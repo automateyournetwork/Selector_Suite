@@ -174,6 +174,8 @@ if st.button("Submit"):
             # --- Simplified Logic: Single spinner and function call ---
             with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
+                st.write("Generated Configuration:")
+                st.code(final_config, language="bash")
                 st.session_state["final_config"] = final_config
 
             st.success("✅ Configuration generation complete!")
