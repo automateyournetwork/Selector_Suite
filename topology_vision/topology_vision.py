@@ -153,6 +153,7 @@ if st.button("🚀 Submit to Topology Vision"):
         st.session_state["trigger_config"] = True
         st.session_state["prompt_text"] = prompt
         st.session_state["uploaded_image"] = uploaded_file.getvalue()
+        st.session_state["final_config_ready"] = False  # clear old results
         st.rerun()
     else:
         st.warning("Please provide all required inputs.")
@@ -173,7 +174,6 @@ if st.session_state.get("trigger_config"):
         st.session_state["final_config_ready"] = False
 
     st.session_state["trigger_config"] = False
-    st.rerun()
 
 # --- Render Config Output ---
 if st.session_state.get("final_config_ready"):
