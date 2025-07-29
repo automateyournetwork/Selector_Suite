@@ -156,7 +156,6 @@ if st.button("🚀 Submit to Topology Vision"):
         st.session_state["uploaded_image"] = uploaded_file.getvalue()
         st.session_state["final_config_ready"] = False
         st.session_state["final_explanation"] = None
-        st.rerun()  # force clean rerun after setting state
     else:
         st.warning("Please provide all required inputs.")
 
@@ -176,8 +175,6 @@ if st.session_state.get("trigger_config", False):
     else:
         st.error("Gemini failed to generate configuration.")
         st.session_state["final_config_ready"] = False
-
-    st.rerun() 
 
 # --- Render Config Output ---
 if st.session_state.get("final_config_ready"):
