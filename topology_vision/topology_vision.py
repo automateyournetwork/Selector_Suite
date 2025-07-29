@@ -198,10 +198,10 @@ if st.button("🚀 Submit to Gemini"):
 
             image = Image.open(uploaded_file)
 
-            with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
+            with st.status("🤖 Gemini is analyzing... please wait", expanded=True) as status:
                 final_config = generate_config_single_pass(image, prompt)
-                st.subheader("🧩 Final Configuration (Direct Output)")
                 st.code(final_config, language="bash")
+                status.update(label="✅ Gemini finished", state="complete")
 
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
