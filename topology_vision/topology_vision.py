@@ -118,6 +118,7 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
         [image, final_prompt],
         generation_config={"temperature": 0.4}
     )
+    st.write(response)
     return response.text.strip()
 
 
