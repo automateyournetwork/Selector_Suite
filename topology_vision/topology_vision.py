@@ -24,6 +24,10 @@ if 'uploaded_file_name' not in st.session_state:
     st.session_state['uploaded_file_name'] = None
 if 'user_prompt' not in st.session_state:
     st.session_state['user_prompt'] = None
+if 'uploaded_image_data' not in st.session_state:
+    st.session_state['uploaded_image_data'] = None
+if 'processing' not in st.session_state:
+    st.session_state['processing'] = False
 
 # --- Model Setup ---
 MODEL = None
@@ -68,6 +72,37 @@ def show_header_and_instructions():
 
 def upload_and_process_diagram():
     """Handle file upload and initial processing - similar to PCAP upload pattern"""
+    
+    # Check if we're in processing state
+    if st.session_state.get('processing'):
+        # Process the image using stored data
+        image = Image.open(BytesIO(st.session_state['uploaded_image_data']))
+        
+        # Generate configuration
+        with st.spinner('🤖 Gemini is analyzing your network diagram...'):
+            try:
+                generator = VisualConfigGenerator(MODEL, st.session_state['user_prompt'], image)
+                result = generator.run()
+                
+                if result:
+                    st.session_state['final_config'] = result
+                    st.session_state['config_generated'] = True
+                    st.session_state['final_explanation'] = None  # Reset explanation
+                    st.session_state['processing'] = False
+                    st.success("Configuration generated successfully!")
+                    st.rerun()
+                else:
+                    st.error("Failed to generate configuration. Please try again.")
+                    st.session_state['processing'] = False
+                    return
+                    
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {e}")
+                st.session_state['processing'] = False
+                return
+        
+        return  # Don't show the upload form while processing
+    
     uploaded_file = st.file_uploader("Upload network diagram", type=["png", "jpg", "jpeg"])
     prompt = st.text_area("Configuration Goal", 
                          placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.",
@@ -76,32 +111,11 @@ def upload_and_process_diagram():
     submit_button = st.button("🚀 Generate Configuration")
     
     if submit_button and uploaded_file and prompt and MODEL:
-        # Store the inputs in session state
+        # Store the inputs in session state FIRST
         st.session_state['uploaded_file_name'] = uploaded_file.name
         st.session_state['user_prompt'] = prompt
-        
-        # Process the image
-        image = Image.open(BytesIO(uploaded_file.getvalue()))
-        
-        # Generate configuration
-        with st.spinner('🤖 Gemini is analyzing your network diagram...'):
-            try:
-                generator = VisualConfigGenerator(MODEL, prompt, image)
-                result = generator.run()
-                
-                if result:
-                    st.session_state['final_config'] = result
-                    st.session_state['config_generated'] = True
-                    st.session_state['final_explanation'] = None  # Reset explanation
-                    st.success("Configuration generated successfully!")
-                else:
-                    st.error("Failed to generate configuration. Please try again.")
-                    return
-                    
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
-                return
-        
+        st.session_state['uploaded_image_data'] = uploaded_file.getvalue()
+        st.session_state['processing'] = True
         st.rerun()
     
     elif submit_button:
@@ -162,7 +176,7 @@ def config_interface():
     if reset_button:
         # Clear all session state like PCAP tool does
         for key in ['config_generated', 'final_config', 'final_explanation', 
-                   'uploaded_file_name', 'user_prompt']:
+                   'uploaded_file_name', 'user_prompt', 'uploaded_image_data', 'processing']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -254,7 +268,6 @@ class VisualConfigGenerator:
                 request_options={"timeout": 180}
             )
             logging.info("Gemini model response received")
-            logging.debug(f"Response: {response.text.strip()}")
             return response.text.strip() if hasattr(response, "text") else None
         except Exception as e:
             logging.error(f"Gemini failed: {e}")
