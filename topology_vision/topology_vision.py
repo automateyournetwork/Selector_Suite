@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 st.set_page_config(page_title="Visual Config Generator", page_icon="🔍")
 
-# Initialize session state variables
+# Initialize session state variables - simplified like PCAP tool
 if 'config_generated' not in st.session_state:
     st.session_state['config_generated'] = False
 if 'final_config' not in st.session_state:
@@ -24,10 +24,6 @@ if 'uploaded_file_name' not in st.session_state:
     st.session_state['uploaded_file_name'] = None
 if 'user_prompt' not in st.session_state:
     st.session_state['user_prompt'] = None
-if 'uploaded_image_data' not in st.session_state:
-    st.session_state['uploaded_image_data'] = None
-if 'processing' not in st.session_state:
-    st.session_state['processing'] = False
 
 # --- Model Setup ---
 MODEL = None
@@ -71,51 +67,41 @@ def show_header_and_instructions():
     st.markdown("---")
 
 def upload_and_process_diagram():
-    """Handle file upload and initial processing - similar to PCAP upload pattern"""
+    """Handle file upload and processing - exactly like PCAP tool pattern"""
+    uploaded_file = st.file_uploader("Upload network diagram", type=["png", "jpg", "jpeg"])
+    prompt = st.text_area("Configuration Goal", 
+                         placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.")
     
-    # Check if we're in processing state
-    if st.session_state.get('processing'):
-        # Process the image using stored data
-        image = Image.open(BytesIO(st.session_state['uploaded_image_data']))
+    submit_button = st.button("🚀 Generate Configuration")
+    
+    if submit_button and uploaded_file and prompt and MODEL:
+        # Store the inputs in session state
+        st.session_state['uploaded_file_name'] = uploaded_file.name
+        st.session_state['user_prompt'] = prompt
         
-        # Generate configuration
+        # Process the image immediately - just like PCAP tool
+        image = Image.open(BytesIO(uploaded_file.getvalue()))
+        
+        # Generate configuration with spinner - all in one go like PCAP
         with st.spinner('🤖 Gemini is analyzing your network diagram...'):
             try:
-                generator = VisualConfigGenerator(MODEL, st.session_state['user_prompt'], image)
+                generator = VisualConfigGenerator(MODEL, prompt, image)
                 result = generator.run()
                 
                 if result:
                     st.session_state['final_config'] = result
                     st.session_state['config_generated'] = True
                     st.session_state['final_explanation'] = None  # Reset explanation
-                    st.session_state['processing'] = False
                     st.success("Configuration generated successfully!")
-                    st.rerun()
                 else:
                     st.error("Failed to generate configuration. Please try again.")
-                    st.session_state['processing'] = False
                     return
                     
             except Exception as e:
                 st.error(f"An unexpected error occurred: {e}")
-                st.session_state['processing'] = False
                 return
         
-        return  # Don't show the upload form while processing
-    
-    uploaded_file = st.file_uploader("Upload network diagram", type=["png", "jpg", "jpeg"])
-    prompt = st.text_area("Configuration Goal", 
-                         placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.",
-                         value=st.session_state.get('user_prompt', ''))
-    
-    submit_button = st.button("🚀 Generate Configuration")
-    
-    if submit_button and uploaded_file and prompt and MODEL:
-        # Store the inputs in session state FIRST
-        st.session_state['uploaded_file_name'] = uploaded_file.name
-        st.session_state['user_prompt'] = prompt
-        st.session_state['uploaded_image_data'] = uploaded_file.getvalue()
-        st.session_state['processing'] = True
+        # Only rerun AFTER everything is complete - like PCAP tool
         st.rerun()
     
     elif submit_button:
@@ -176,7 +162,7 @@ def config_interface():
     if reset_button:
         # Clear all session state like PCAP tool does
         for key in ['config_generated', 'final_config', 'final_explanation', 
-                   'uploaded_file_name', 'user_prompt', 'uploaded_image_data', 'processing']:
+                   'uploaded_file_name', 'user_prompt']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -274,10 +260,10 @@ class VisualConfigGenerator:
             return None
 
 def main():
-    """Main function following PCAP tool pattern"""
+    """Main function following PCAP tool pattern exactly"""
     show_header_and_instructions()
     
-    # Check session state to determine which interface to show
+    # Simple state check - just like PCAP tool
     if not st.session_state.get('config_generated'):
         upload_and_process_diagram()
     else:
