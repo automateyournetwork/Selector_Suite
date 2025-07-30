@@ -114,37 +114,11 @@ def generate_config_single_pass(image: Image.Image, prompt: str):
     - Do **not** include any explanations, commentary, markdown formatting (like ```), or conversational text in your output.
     """
 
-    try:
-        st.write("🤖 Analyzing the diagram and prompt...")
-        logging.info("Sending request to Gemini model...")
-
-        response = MODEL.generate_content(
-            [image, final_prompt],
-            generation_config={"temperature": 0.4},
-            request_options={"timeout": 180}  # ⏱ Extend timeout to 3 minutes
-        )
-
-        logging.info("Gemini model response received")
-
-        if not response:
-            st.error("❌ No response received from Gemini model.")
-            logging.error("Gemini response was None")
-            return ""
-
-        if not hasattr(response, "text"):
-            st.error("❌ Unexpected response format from Gemini model.")
-            logging.error(f"Gemini response object: {response}")
-            return ""
-
-        result = response.text.strip()
-        logging.info(f"Generated config length: {len(result)} characters")
-        return result
-
-    except Exception as e:
-        st.error(f"🚨 Error while generating configuration: {e}")
-        logging.exception("Gemini model call failed")
-        return ""
-
+    response = MODEL.generate_content(
+        [image, final_prompt],
+        generation_config={"temperature": 0.4}
+    )
+    return response.text.strip()
 
 
 # --- 3. Streamlit User Interface ---
@@ -187,45 +161,44 @@ The more **textual detail** you give, the more accurate and useful your configur
 uploaded_file = st.file_uploader("Upload network diagram (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
 prompt = st.text_area("Configuration Goal", placeholder="Example: Configure inter-VLAN routing and OSPF Area 0.")
 
-# --- Submit Button Handler ---
-if st.button("🚀 Submit to Gemini"):
+if st.button("Submit"):
     if uploaded_file and prompt and MODEL:
         try:
-            # 🧠 Store prompt text (images can't be pickled)
-            st.session_state["prompt_cache"] = prompt
+            image = Image.open(uploaded_file)
+
+            # Store image in session state for redisplay after rerun
+            st.session_state["image_cache"] = image
 
             st.info("⚙️ Processing your diagram and generating the configuration...")
 
-            image = Image.open(uploaded_file)
-
-            with st.status("🤖 Gemini is analyzing... please wait", expanded=True) as status:
+            # --- Simplified Logic: Single spinner and function call ---
+            with st.spinner("🤖 Gemini is analyzing the diagram and building the config..."):
                 final_config = generate_config_single_pass(image, prompt)
-                st.code(final_config, language="bash")
-                status.update(label="✅ Gemini finished", state="complete")
+                st.session_state["final_config"] = final_config
+
+            st.success("✅ Configuration generation complete!")
 
         except Exception as e:
             st.error(f"An error occurred during generation: {e}")
             logging.error(f"Configuration generation failed: {e}")
-            st.session_state["final_config_ready"] = False
+
     else:
         if not uploaded_file:
             st.warning("⚠️ Please upload a diagram.")
         if not prompt:
             st.warning("⚠️ Please provide a configuration goal.")
         if not MODEL:
-            st.error("🚨 Model not available. Please check your API key configuration.")
-        st.session_state["final_config_ready"] = False
+             st.error("🚨 Model not available. Please check your API key configuration.")
 
-# --- Post-generation UI ---
-if st.session_state.get("final_config_ready"):
+
+# --- Post-generation UI (Explain & Download) ---
+if "final_config" in st.session_state:
     st.subheader("🧩 Final Configuration")
-
-    if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded Network Diagram")
-
+    if "image_cache" in st.session_state:
+        st.image(st.session_state["image_cache"], caption="Uploaded Network Diagram")
     st.code(st.session_state["final_config"], language="bash")
 
-    # 🧠 Explanation button triggers markdown generation
+    # Explanation button
     if st.button("🧠 Explain This Configuration"):
         with st.spinner("Explaining the final configuration..."):
             try:
@@ -238,16 +211,12 @@ if st.session_state.get("final_config_ready"):
                 {st.session_state['final_config']}
                 """
                 response = MODEL.generate_content(explanation_prompt)
-                st.session_state["final_explanation"] = response.text.strip()
+                explanation = response.text.strip()
+                st.markdown(explanation)
             except Exception as e:
                 st.error(f"An error occurred while generating the explanation: {e}")
-                st.session_state["final_explanation"] = None
 
-    # 📘 Show explanation if available
-    if st.session_state.get("final_explanation"):
-        st.markdown(st.session_state["final_explanation"])
-
-    # 📥 Download
+    # Download button
     st.download_button(
         label="📥 Download Final Configuration",
         data=st.session_state["final_config"],
