@@ -254,6 +254,7 @@ class VisualConfigGenerator:
                 request_options={"timeout": 180}
             )
             logging.info("Gemini model response received")
+            logging.debug(f"Response: {response.text.strip()}")
             return response.text.strip() if hasattr(response, "text") else None
         except Exception as e:
             logging.error(f"Gemini failed: {e}")
