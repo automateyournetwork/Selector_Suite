@@ -39,5 +39,7 @@ RUN echo "==> Adding sentence transformers ..." \
 
 COPY /packet_copilot /packet_copilot/
 
-CMD ["streamlit", "run", "packet_copilot/packet_copilot.py", "--server.port=8501", "--server.enableCORS=false"]
+RUN chmod +x /packet_copilot/start.sh
+
+CMD ["/packet_copilot/start.sh"]
 
