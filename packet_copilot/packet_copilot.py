@@ -572,7 +572,51 @@ def show_packet_copilot_page():
     **No data**, including the PCAP, JSON, or vector store, is retained or stored. Everything is deleted during or after the session ends.
     **Please** follow your enterprise's internal artificial intelligence guidelines and governance models before uploading anything sensitive.
     """)
+    # --- MCP Access Section ---
+    st.markdown("---")
+    st.markdown("## 🆕 MCP access to Packet Copilot")
+    st.markdown("""
+**NEW!!!** Packet Copilot now supports the Model Context Protocol (MCP).  
+This means you can use it directly from **Claude Desktop**, **Gemini CLI**, or **VS Code (Continue)**.
+
+**MCP endpoint:** `https://packetcopilot.selector.ai/mcp/`
+    """)
+
+    with st.expander("Claude Desktop config"):
+        st.markdown("""
+{
+  "mcpServers": {
+    "PacketCopilot": {
+      "httpUrl": "https://packetcopilot.selector.ai/mcp/"
+    }
+  }
+}
+        """)
+
+    with st.expander("Gemini CLI config"):
+        st.markdown("""
+{
+  "mcpServers": {
+    "PacketCopilot": {
+      "httpUrl": "https://packetcopilot.selector.ai/mcp/"
+    }
+  }
+}
+        """)
+
+    with st.expander("VS Code (Continue) config"):
+        st.markdown("""
+{
+  "mcpServers": {
+    "PacketCopilot": {
+      "httpUrl": "https://packetcopilot.selector.ai/mcp/"
+    }
+  }
+}
+        """)
+
     st.markdown("---")  # Adds a horizontal line
+
     st.write("""
     Sample Packet Captures for Testing
              """)

@@ -37,7 +37,12 @@ RUN echo "==> Adding dotenv ..." \
 RUN echo "==> Adding sentence transformers ..." \
   && pip install --break-system-packages sentence-transformers transformers
 
+RUN echo "==> Adding dotenv ..." \
+  && pip install --break-system-packages fastmcp
+
 COPY /packet_copilot /packet_copilot/
 
-CMD ["streamlit", "run", "packet_copilot/packet_copilot.py", "--server.port=8501", "--server.enableCORS=false"]
+RUN chmod +x /packet_copilot/start.sh
+
+CMD ["/packet_copilot/start.sh"]
 
