@@ -71,6 +71,7 @@ def _build_docs_from_json(json_path: str):
 
 def _return_system_text(pcap_pages) -> str:
     pcap_summary = " ".join([str(p) for p in pcap_pages[:5]])
+    pcap_summary = pcap_summary.replace("{", "{{").replace("}", "}}")
     return f"""
 You are an expert assistant specialized in analyzing PCAPs. Use only the provided packet_capture_info.
 Be concise, structured, and add brief protocol hints when relevant.
