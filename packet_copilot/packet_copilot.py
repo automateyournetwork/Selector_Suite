@@ -591,7 +591,6 @@ This means you can use it directly from **Claude Desktop**, **Gemini CLI**, or *
     }
   }
 }
-# Save to: ~/Library/Application Support/Claude/claude_desktop_config.json
         """)
 
     with st.expander("Gemini CLI config"):
@@ -603,7 +602,6 @@ This means you can use it directly from **Claude Desktop**, **Gemini CLI**, or *
     }
   }
 }
-# Save to: ~/.gemini/settings.json
         """)
 
     with st.expander("VS Code (Continue) config"):
@@ -615,7 +613,6 @@ This means you can use it directly from **Claude Desktop**, **Gemini CLI**, or *
     }
   }
 }
-# Save to: ~/.continue/config.json  or  ./.continue/config.json in your repo
         """)
 
     st.markdown("---")  # Adds a horizontal line
