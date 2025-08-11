@@ -587,7 +587,7 @@ This means you can use it directly from **Claude Desktop**, **Gemini CLI**, or *
 {
   "mcpServers": {
     "PacketCopilot": {
-      "url": "https://packetcopilot.selector.ai/mcp/"
+      "httpUrl": "https://packetcopilot.selector.ai/mcp/"
     }
   }
 }
@@ -598,7 +598,7 @@ This means you can use it directly from **Claude Desktop**, **Gemini CLI**, or *
 {
   "mcpServers": {
     "PacketCopilot": {
-      "url": "https://packetcopilot.selector.ai/mcp/"
+      "httpUrl": "https://packetcopilot.selector.ai/mcp/"
     }
   }
 }
@@ -609,7 +609,7 @@ This means you can use it directly from **Claude Desktop**, **Gemini CLI**, or *
 {
   "mcpServers": {
     "PacketCopilot": {
-      "url": "https://packetcopilot.selector.ai/mcp/"
+      "httpUrl": "https://packetcopilot.selector.ai/mcp/"
     }
   }
 }
